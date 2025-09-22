@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Clipper Pro — Nuclear CORS Fixed</title>
+    <title>YouTube Clipper Pro — Offline Mode</title>
     <style>
         :root { --primary: #ff0000; --dark: #111; --light: #f9f9f9; }
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
@@ -30,10 +30,10 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎥 YouTube Clipper Pro — CORS IS DEAD</h1>
-        <p>Paste YouTube URL → Get 30s clips + AI SEO → All Free. CORS Physically Impossible.</p>
+        <h1>🎥 YouTube Clipper Pro — 100% Client-Side</h1>
+        <p>⚠️ <strong>Important:</strong> This version requires you to <strong>download the video first</strong> using any tool, then upload it here.</p>
         
-        <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=..." />
+        <input type="file" id="videoFile" accept="video/*" />
         <button id="processBtn">Process Video</button>
         
         <div class="progress-bar" id="progressBar"><div id="progressFill"></div></div>
@@ -42,21 +42,18 @@
         <div id="clipsContainer" class="clips-container"></div>
 
         <div class="seo-section" id="seoSection" style="display:none;">
-            <h3>🤖 AI-Generated SEO Metadata (Secure API Call)</h3>
+            <h3>🤖 AI-Generated SEO Metadata (Manual Entry)</h3>
             <div>
                 <label>Title</label>
-                <textarea id="seoTitle" readonly></textarea>
-                <button onclick="copyText('seoTitle')">📋 Copy</button>
+                <textarea id="seoTitle" placeholder="Enter your own title"></textarea>
             </div>
             <div>
                 <label>Description</label>
-                <textarea id="seoDesc" readonly></textarea>
-                <button onclick="copyText('seoDesc')">📋 Copy</button>
+                <textarea id="seoDesc" placeholder="Enter your own description"></textarea>
             </div>
             <div>
                 <label>Tags & Hashtags</label>
-                <textarea id="seoTags" readonly></textarea>
-                <button onclick="copyText('seoTags')">📋 Copy</button>
+                <textarea id="seoTags" placeholder="Enter your own tags and hashtags"></textarea>
             </div>
             <button id="downloadAllBtn" style="margin-top:15px;">⬇️ Download All Clips (ZIP)</button>
         </div>
@@ -68,14 +65,9 @@
     
     <script>
         // ======================
-        // CONFIG — REPLACE WITH YOUR WORKER URL
-        // ======================
-        const WORKER_SEO_URL = "https://youtubeclipper.ujalaconsultant.workers.dev"; // 🔥 REPLACE THIS
-
-        // ======================
         // DOM ELEMENTS
         // ======================
-        const videoUrlInput = document.getElementById('videoUrl');
+        const videoFileInput = document.getElementById('videoFile');
         const processBtn = document.getElementById('processBtn');
         const statusMsg = document.getElementById('statusMsg');
         const clipsContainer = document.getElementById('clipsContainer');
@@ -91,50 +83,31 @@
         downloadAllBtn.addEventListener('click', downloadAllClips);
 
         // ======================
-        // MAIN FUNCTIONS — CLIENT-SIDE VIDEO DOWNLOAD — NO CORS
+        // MAIN FUNCTIONS — 100% CLIENT-SIDE — NO NETWORK CALLS
         // ======================
 
         async function processVideo() {
-            const url = videoUrlInput.value.trim();
-            if (!url) return showError("Please enter a YouTube URL.");
+            const file = videoFileInput.files[0];
+            if (!file) return showError("Please select a video file.");
             
-            showStatus("⏳ Fetching video info...");
+            showStatus("⏳ Processing video...");
             showProgressBar();
 
             try {
-                // ✅ STEP 1: FETCH VIDEO INFO — USING PUBLIC API — NO CORS ISSUE
-                const apiUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-                await fetch(apiUrl); // Just to validate URL — ignore result
-
-                // ✅ STEP 2: USE yt-download.org DIRECTLY — BUT VIA FETCH — CLIENT-SIDE
-                const downloadPageUrl = `https://yt-download.org/api/button/mp4?url=${encodeURIComponent(url)}`;
-                const pageRes = await fetch(downloadPageUrl);
-                const html = await pageRes.text();
-
-                const match = html.match(/href="(https:\/\/[^"]+\.mp4[^"]*)"/);
-                if (!match) throw new Error("Could not extract video URL");
-
-                const videoUrl = match[1];
-                showStatus("📥 Downloading video...");
-
-                // ✅ STEP 3: DOWNLOAD VIDEO — CLIENT-SIDE — NO WORKER — NO CORS
-                const videoRes = await fetch(videoUrl);
-                const videoBlob = await videoRes.blob();
-                const videoDuration = await getVideoDuration(videoBlob);
+                // ✅ GET VIDEO DURATION
+                const videoDuration = await getVideoDuration(file);
 
                 if (videoDuration < 30) {
                     showError("Video is less than 30 seconds. Cannot slice.");
                     return;
                 }
 
-                // ✅ STEP 4: SLICE VIDEO
-                await sliceVideoIntoClips(videoBlob, videoDuration);
+                // ✅ SLICE VIDEO INTO 30s CLIPS
+                await sliceVideoIntoClips(file, videoDuration);
 
-                // ✅ STEP 5: AI SEO — VIA WORKER — WITH NUCLEAR CORS HEADERS
-                await generateSEOMetadata(url);
-
-                hideProgressBar();
-                showStatus("✅ Processing complete! Scroll down to view clips & SEO data.", "success");
+                // ✅ SHOW SEO SECTION — MANUAL ENTRY
+                seoSection.style.display = 'block';
+                showStatus("✅ Processing complete! Scroll down to view clips.", "success");
 
             } catch (err) {
                 hideProgressBar();
@@ -143,7 +116,7 @@
             }
         }
 
-        async function getVideoDuration(blob) {
+        async function getVideoDuration(file) {
             return new Promise((resolve) => {
                 const video = document.createElement('video');
                 video.preload = 'metadata';
@@ -151,11 +124,11 @@
                     resolve(video.duration);
                     video.remove();
                 };
-                video.src = URL.createObjectURL(blob);
+                video.src = URL.createObjectURL(file);
             });
         }
 
-        async function sliceVideoIntoClips(blob, duration) {
+        async function sliceVideoIntoClips(file, duration) {
             const ffmpeg = new FFmpeg();
             await ffmpeg.load();
 
@@ -170,7 +143,11 @@
 
                 showStatus(`✂️ Slicing clip ${i+1} of ${totalClips}...`);
 
-                await ffmpeg.writeFile('input.mp4', await fetchFile(blob));
+                // ✅ WRITE FILE TO FFmpeg
+                const arrayBuffer = await file.arrayBuffer();
+                await ffmpeg.writeFile('input.mp4', new Uint8Array(arrayBuffer));
+
+                // ✅ SLICE VIDEO
                 await ffmpeg.exec([
                     '-i', 'input.mp4',
                     '-ss', start.toString(),
@@ -182,12 +159,14 @@
                     clipName
                 ]);
 
+                // ✅ READ CLIP
                 const clipData = await ffmpeg.readFile(clipName);
                 const clipBlob = new Blob([clipData.buffer], { type: 'video/mp4' });
                 const clipUrl = URL.createObjectURL(clipBlob);
 
                 clips.push({ id: i+1, blob: clipBlob, url: clipUrl, name: clipName });
 
+                // ✅ CREATE UI
                 createClipCard(clipUrl, i+1, start, end, clipBlob, clipName);
                 updateProgress((i + 1) / totalClips);
             }
@@ -210,31 +189,6 @@
             clipsContainer.appendChild(card);
         }
 
-        async function generateSEOMetadata(videoUrl) {
-            try {
-                showStatus("🧠 Generating SEO metadata via Secure AI API...");
-
-                // ✅ CALL WORKER — WITH NUCLEAR CORS HEADERS
-                const seoUrl = `${WORKER_SEO_URL}/seo?url=${encodeURIComponent(videoUrl)}`;
-                const response = await fetch(seoUrl);
-                const seoData = await response.json();
-
-                document.getElementById('seoTitle').value = seoData.title;
-                document.getElementById('seoDesc').value = seoData.description;
-                document.getElementById('seoTags').value = `${seoData.tags}, ${seoData.hashtags}`;
-
-                seoSection.style.display = 'block';
-                showStatus("✅ SEO Metadata Generated!", "success");
-
-            } catch (err) {
-                console.error("SEO Error:", err);
-                document.getElementById('seoTitle').value = "YouTube Clip Title";
-                document.getElementById('seoDesc').value = "Download this 30-second clip and share!";
-                document.getElementById('seoTags').value = "youtube,shorts,clip,free,download";
-                seoSection.style.display = 'block';
-            }
-        }
-
         // ======================
         // DOWNLOAD & CONVERSION
         // ======================
@@ -249,7 +203,12 @@
         async function convertAndDownload(videoUrl, filename, format) {
             const ffmpeg = new FFmpeg();
             await ffmpeg.load();
-            await ffmpeg.writeFile('input.mp4', await (await fetch(videoUrl)).arrayBuffer());
+            
+            // Fetch video data
+            const response = await fetch(videoUrl);
+            const arrayBuffer = await response.arrayBuffer();
+            
+            await ffmpeg.writeFile('input.mp4', new Uint8Array(arrayBuffer));
 
             let args, ext, mime;
             if (format === 'mp3') {
@@ -279,7 +238,13 @@
             Array.from(clipsContainer.querySelectorAll('.clip-card')).forEach((card, index) => {
                 const videoUrl = card.querySelector('video source').src;
                 const filename = `clip_${index+1}.mp4`;
-                zip.file(filename, fetch(videoUrl));
+                
+                // Fetch the blob and add to zip
+                fetch(videoUrl)
+                    .then(r => r.blob())
+                    .then(blob => {
+                        zip.file(filename, blob);
+                    });
             });
 
             const content = await zip.generateAsync({ type: 'blob' });
@@ -329,11 +294,6 @@
             const m = Math.floor((seconds % 3600) / 60);
             const s = Math.floor(seconds % 60);
             return [h, m, s].filter((v, i) => v > 0 || i > 0).map(v => v.toString().padStart(2, '0')).join(':');
-        }
-
-        async function fetchFile(blob) {
-            const buffer = await blob.arrayBuffer();
-            return new Uint8Array(buffer);
         }
     </script>
 </body>
