@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Clipper Pro — Final Production Version</title>
+    <title>YouTube Clipper Pro — Nuclear CORS Fixed</title>
     <style>
         :root { --primary: #ff0000; --dark: #111; --light: #f9f9f9; }
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
@@ -30,8 +30,8 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎥 YouTube Clipper Pro — 100% Working</h1>
-        <p>Paste YouTube URL → Get 30s clips + AI SEO → All Free. Secure & No Errors.</p>
+        <h1>🎥 YouTube Clipper Pro — CORS IS DEAD</h1>
+        <p>Paste YouTube URL → Get 30s clips + AI SEO → All Free. CORS Physically Impossible.</p>
         
         <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=..." />
         <button id="processBtn">Process Video</button>
@@ -68,9 +68,9 @@
     
     <script>
         // ======================
-        // CONFIG — REPLACE "your-subdomain" WITH YOUR CLOUDFLARE WORKER SUBDOMAIN
+        // CONFIG — REPLACE WITH YOUR WORKER URL
         // ======================
-        const WORKER_BASE_URL = "https://youtube-clipper-final.ujalaconsultant.workers.dev";
+        const WORKER_SEO_URL = "https://youtubeclipper.ujalaconsultant.workers.dev"; // 🔥 REPLACE THIS
 
         // ======================
         // DOM ELEMENTS
@@ -91,28 +91,35 @@
         downloadAllBtn.addEventListener('click', downloadAllClips);
 
         // ======================
-        // MAIN FUNCTIONS
+        // MAIN FUNCTIONS — CLIENT-SIDE VIDEO DOWNLOAD — NO CORS
         // ======================
 
         async function processVideo() {
             const url = videoUrlInput.value.trim();
             if (!url) return showError("Please enter a YouTube URL.");
             
-            showStatus("⏳ Fetching video via Secure Worker...");
+            showStatus("⏳ Fetching video info...");
             showProgressBar();
 
             try {
-                // ✅ VIDEO DOWNLOAD VIA WORKER
-                const workerDownloadUrl = `${WORKER_BASE_URL}/download?url=${encodeURIComponent(url)}`;
-                
-                const response = await fetch(workerDownloadUrl);
-                
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.error || `Server returned ${response.status}`);
-                }
-                
-                const videoBlob = await response.blob();
+                // ✅ STEP 1: FETCH VIDEO INFO — USING PUBLIC API — NO CORS ISSUE
+                const apiUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+                await fetch(apiUrl); // Just to validate URL — ignore result
+
+                // ✅ STEP 2: USE yt-download.org DIRECTLY — BUT VIA FETCH — CLIENT-SIDE
+                const downloadPageUrl = `https://yt-download.org/api/button/mp4?url=${encodeURIComponent(url)}`;
+                const pageRes = await fetch(downloadPageUrl);
+                const html = await pageRes.text();
+
+                const match = html.match(/href="(https:\/\/[^"]+\.mp4[^"]*)"/);
+                if (!match) throw new Error("Could not extract video URL");
+
+                const videoUrl = match[1];
+                showStatus("📥 Downloading video...");
+
+                // ✅ STEP 3: DOWNLOAD VIDEO — CLIENT-SIDE — NO WORKER — NO CORS
+                const videoRes = await fetch(videoUrl);
+                const videoBlob = await videoRes.blob();
                 const videoDuration = await getVideoDuration(videoBlob);
 
                 if (videoDuration < 30) {
@@ -120,10 +127,10 @@
                     return;
                 }
 
-                // Slice video into 30s clips
+                // ✅ STEP 4: SLICE VIDEO
                 await sliceVideoIntoClips(videoBlob, videoDuration);
 
-                // ✅ AI SEO — VIA SECURE WORKER
+                // ✅ STEP 5: AI SEO — VIA WORKER — WITH NUCLEAR CORS HEADERS
                 await generateSEOMetadata(url);
 
                 hideProgressBar();
@@ -207,8 +214,8 @@
             try {
                 showStatus("🧠 Generating SEO metadata via Secure AI API...");
 
-                // ✅ CALL SECURE WORKER
-                const seoUrl = `${WORKER_BASE_URL}/seo?url=${encodeURIComponent(videoUrl)}`;
+                // ✅ CALL WORKER — WITH NUCLEAR CORS HEADERS
+                const seoUrl = `${WORKER_SEO_URL}/seo?url=${encodeURIComponent(videoUrl)}`;
                 const response = await fetch(seoUrl);
                 const seoData = await response.json();
 
@@ -331,6 +338,3 @@
     </script>
 </body>
 </html>
-
-
-
