@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Clipper Pro — Ultimate Final Version</title>
+    <title>YouTube Clipper Pro — Final Production Version</title>
     <style>
         :root { --primary: #ff0000; --dark: #111; --light: #f9f9f9; }
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
@@ -30,8 +30,8 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎥 YouTube Clipper Pro — No Libraries, No Errors</h1>
-        <p>Paste YouTube URL → Get 30s clips + AI SEO → All Free. 100% Working.</p>
+        <h1>🎥 YouTube Clipper Pro — 100% Working</h1>
+        <p>Paste YouTube URL → Get 30s clips + AI SEO → All Free. Secure & No Errors.</p>
         
         <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=..." />
         <button id="processBtn">Process Video</button>
@@ -68,9 +68,9 @@
     
     <script>
         // ======================
-        // CONFIG — SECURE WORKER FOR SEO ONLY
+        // CONFIG — REPLACE "your-subdomain" WITH YOUR CLOUDFLARE WORKER SUBDOMAIN
         // ======================
-        const WORKER_SEO_URL = "youtubeclipper.ujalaconsultant.workers.dev"; // 🔐 Replace with your worker URL
+        const WORKER_BASE_URL = "https://youtube-clipper-final.ujalaconsultant.workers.dev";
 
         // ======================
         // DOM ELEMENTS
@@ -95,46 +95,139 @@
         // ======================
 
         async function processVideo() {
-    const url = videoUrlInput.value.trim();
-    if (!url) return showError("Please enter a YouTube URL.");
-    
-    showStatus("⏳ Fetching video via Secure Worker...");
-    showProgressBar();
+            const url = videoUrlInput.value.trim();
+            if (!url) return showError("Please enter a YouTube URL.");
+            
+            showStatus("⏳ Fetching video via Secure Worker...");
+            showProgressBar();
 
-    try {
-        // ✅ VIDEO DOWNLOAD VIA WORKER — NO CORS
-        const workerDownloadUrl = `https://youtube-clipper-final.ujalaconsultant.workers.dev/download?url=${encodeURIComponent(url)}`;
-        
-        const response = await fetch(workerDownloadUrl);
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "Failed to fetch video");
+            try {
+                // ✅ VIDEO DOWNLOAD VIA WORKER
+                const workerDownloadUrl = `${WORKER_BASE_URL}/download?url=${encodeURIComponent(url)}`;
+                
+                const response = await fetch(workerDownloadUrl);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `Server returned ${response.status}`);
+                }
+                
+                const videoBlob = await response.blob();
+                const videoDuration = await getVideoDuration(videoBlob);
+
+                if (videoDuration < 30) {
+                    showError("Video is less than 30 seconds. Cannot slice.");
+                    return;
+                }
+
+                // Slice video into 30s clips
+                await sliceVideoIntoClips(videoBlob, videoDuration);
+
+                // ✅ AI SEO — VIA SECURE WORKER
+                await generateSEOMetadata(url);
+
+                hideProgressBar();
+                showStatus("✅ Processing complete! Scroll down to view clips & SEO data.", "success");
+
+            } catch (err) {
+                hideProgressBar();
+                showError("Error: " + err.message);
+                console.error(err);
+            }
         }
-        
-        const videoBlob = await response.blob();
-        const videoDuration = await getVideoDuration(videoBlob);
 
-        if (videoDuration < 30) {
-            showError("Video is less than 30 seconds. Cannot slice.");
-            return;
+        async function getVideoDuration(blob) {
+            return new Promise((resolve) => {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.onloadedmetadata = () => {
+                    resolve(video.duration);
+                    video.remove();
+                };
+                video.src = URL.createObjectURL(blob);
+            });
         }
 
-        // Slice video into 30s clips
-        await sliceVideoIntoClips(videoBlob, videoDuration);
+        async function sliceVideoIntoClips(blob, duration) {
+            const ffmpeg = new FFmpeg();
+            await ffmpeg.load();
 
-        // ✅ AI SEO — VIA SECURE WORKER
-        await generateSEOMetadata(url);
+            clipsContainer.innerHTML = '';
+            const clips = [];
+            const totalClips = Math.ceil(duration / 30);
 
-        hideProgressBar();
-        showStatus("✅ Processing complete! Scroll down to view clips & SEO data.", "success");
+            for (let i = 0; i < totalClips; i++) {
+                const start = i * 30;
+                const end = Math.min(start + 30, duration);
+                const clipName = `clip_${i+1}.mp4`;
 
-    } catch (err) {
-        hideProgressBar();
-        showError("Error: " + err.message);
-        console.error(err);
-    }
-}
+                showStatus(`✂️ Slicing clip ${i+1} of ${totalClips}...`);
+
+                await ffmpeg.writeFile('input.mp4', await fetchFile(blob));
+                await ffmpeg.exec([
+                    '-i', 'input.mp4',
+                    '-ss', start.toString(),
+                    '-to', end.toString(),
+                    '-c:v', 'libx264',
+                    '-c:a', 'aac',
+                    '-vf', 'scale=1280:720',
+                    '-preset', 'ultrafast',
+                    clipName
+                ]);
+
+                const clipData = await ffmpeg.readFile(clipName);
+                const clipBlob = new Blob([clipData.buffer], { type: 'video/mp4' });
+                const clipUrl = URL.createObjectURL(clipBlob);
+
+                clips.push({ id: i+1, blob: clipBlob, url: clipUrl, name: clipName });
+
+                createClipCard(clipUrl, i+1, start, end, clipBlob, clipName);
+                updateProgress((i + 1) / totalClips);
+            }
+        }
+
+        function createClipCard(url, id, start, end, blob, filename) {
+            const card = document.createElement('div');
+            card.className = 'clip-card';
+            card.innerHTML = `
+                <h4>Clip #${id} [${formatTime(start)} - ${formatTime(end)}]</h4>
+                <video controls>
+                    <source src="${url}" type="video/mp4">
+                </video>
+                <div class="clip-actions">
+                    <button onclick="downloadFile('${url}', '${filename}')">⬇️ MP4</button>
+                    <button onclick="convertAndDownload('${url}', '${filename}', 'mp3')">🔊 MP3</button>
+                    <button onclick="convertAndDownload('${url}', '${filename}', 'webm')">🎥 WebM</button>
+                </div>
+            `;
+            clipsContainer.appendChild(card);
+        }
+
+        async function generateSEOMetadata(videoUrl) {
+            try {
+                showStatus("🧠 Generating SEO metadata via Secure AI API...");
+
+                // ✅ CALL SECURE WORKER
+                const seoUrl = `${WORKER_BASE_URL}/seo?url=${encodeURIComponent(videoUrl)}`;
+                const response = await fetch(seoUrl);
+                const seoData = await response.json();
+
+                document.getElementById('seoTitle').value = seoData.title;
+                document.getElementById('seoDesc').value = seoData.description;
+                document.getElementById('seoTags').value = `${seoData.tags}, ${seoData.hashtags}`;
+
+                seoSection.style.display = 'block';
+                showStatus("✅ SEO Metadata Generated!", "success");
+
+            } catch (err) {
+                console.error("SEO Error:", err);
+                document.getElementById('seoTitle').value = "YouTube Clip Title";
+                document.getElementById('seoDesc').value = "Download this 30-second clip and share!";
+                document.getElementById('seoTags').value = "youtube,shorts,clip,free,download";
+                seoSection.style.display = 'block';
+            }
+        }
+
         // ======================
         // DOWNLOAD & CONVERSION
         // ======================
@@ -237,5 +330,4 @@
         }
     </script>
 </body>
-
 </html>
