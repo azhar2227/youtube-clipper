@@ -1,0 +1,5 @@
+theme: jekyll-theme-minimal
+include:
+  - .nojekyll
+  - index.html
+  - 404.html
